@@ -3,6 +3,7 @@
 #include <string.h> /* memcpy */
 #include <ctype.h>  /* tolower */
 #include <math.h>   /* floor */
+#include <limits.h> /* LONG_MAX */
 #include <assert.h>
 
 int index_compare(const void *a, const void *b)
@@ -495,6 +496,8 @@ spmat* spmat_spgemm(const spmat *A, const spmat *B, const spmat *M, int notM)
         spa_state_t *spa_states = malloc(m * sizeof(spa_state_t));
         num_t *spa_vals = binaryC? NULL : malloc(m * sizeof(num_t));
 
+        //tprintf("Thread %d computing columns [%ld..%ld]\n", tid, j_start, j_end-1);
+
         for (index_t j = j_start; j < j_end; ++j)
         {
             jc[j] = nz;
@@ -857,7 +860,7 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
     #endif
     for (index_t v = 0; v < n; ++v)
     {
-        index_t stv = INT64_MAX;
+        index_t stv = LONG_MAX;
 
         /* From Klein paper:
          *
@@ -889,7 +892,7 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
                 stv = MIN(stv, stx + xtv);
         }
 
-        levels[v] = (stv < INT64_MAX)? stv : -1;
+        levels[v] = (stv < LONG_MAX)? stv : -1;
     }
 
     *iters = bfsiters;
