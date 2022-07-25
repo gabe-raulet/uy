@@ -2,6 +2,7 @@
 #define SPMAT_H_
 
 #include <stdio.h>
+#include <omp.h>
 
 #define MAX(a, b) (((a) < (b))? (b) : (a))
 #define MIN(a, b) (((a) < (b))? (a) : (b))
@@ -11,8 +12,6 @@
 #else
 #define tprintf(fmt, ...)
 #endif
-
-#include <omp.h>
 
 typedef signed long index_t;
 typedef double num_t;

@@ -19,7 +19,8 @@ int main(int argc, char *argv[])
     t0 = omp_get_wtime();
     spmat *A = spmat_read_from_file(mtx);
     t1 = omp_get_wtime();
-    tprintf("Finished reading '%s' (%ld rows, %ld columns, %ld nonzeros) [%f secs]\n\n", mtx, A->m, A->n, spmat_nzs(A), t1-t0);
+
+    tprintf("Finished reading '%s' (%ld rows, %ld columns, %ld nonzeros) [%.3f secs]\n\n", mtx, A->m, A->n, spmat_nzs(A), t1-t0);
 
     FILE *f = fopen(paths, "w");
 

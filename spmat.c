@@ -393,6 +393,12 @@ spmat *spmat_add(const spmat *A, const spmat *B)
 
     for (index_t j = 0; j < n; ++j)
     {
+        if (nz + m > nzmax)
+        {
+            nzmax = nz + 2*m;
+            ir = realloc(ir, nzmax * sizeof(index_t));
+        }
+
         jc[j] = nz;
 
         for (index_t i = 0; i < m; ++i)
@@ -476,67 +482,78 @@ spmat* spmat_spgemm(const spmat *A, const spmat *B, const spmat *M, int notM)
     index_t *ir = malloc(nzmax * sizeof(index_t));
     num_t *vals = binaryC? NULL : malloc(nzmax * sizeof(num_t));
 
-    spa_state_t *spa_states = malloc(m * sizeof(spa_state_t));
-    num_t *spa_vals = binaryC? NULL : malloc(m * sizeof(num_t));
-
-    for (index_t j = 0; j < n; ++j)
+    #ifdef THREADED
+    #pragma omp parallel
+    #endif
     {
-        jc[j] = nz;
+        int tid = omp_get_thread_num();
+        int nthrds = omp_get_num_threads();
 
-        for (index_t i = 0; i < m; ++i)
-            spa_states[i] = SPA_STATE_ALLOWED;
+        index_t j_start = tid * (n / nthrds);
+        index_t j_end = (tid != nthrds-1)? j_start + (n / nthrds) : n;
 
-        if (!masked && nz + m > nzmax)
+        spa_state_t *spa_states = malloc(m * sizeof(spa_state_t));
+        num_t *spa_vals = binaryC? NULL : malloc(m * sizeof(num_t));
+
+        for (index_t j = j_start; j < j_end; ++j)
         {
-            nzmax = nz + m;
-            ir = realloc(ir, nzmax * sizeof(index_t));
-            if (!binaryC) vals = realloc(vals, nzmax * sizeof(num_t));
-        }
+            jc[j] = nz;
 
-        if (masked)
-            for (index_t p = M->jc[j]; p < M->jc[j+1]; ++p)
-                spa_states[M->ir[p]] = notM? SPA_STATE_NOT_ALLOWED : SPA_STATE_ALLOWED;
+            for (index_t i = 0; i < m; ++i)
+                spa_states[i] = SPA_STATE_ALLOWED;
 
-        for (index_t kp = B->jc[j]; kp < B->jc[j+1]; ++kp)
-        {
-            index_t k = B->ir[kp];
-            num_t Bkj = binaryB? 1 : B->vals[kp];
-
-            for (index_t ip = A->jc[k]; ip < A->jc[k+1]; ++ip)
+            if (!masked && nz + m > nzmax)
             {
-                index_t i = A->ir[ip];
-                num_t Aik = binaryA? 1 : A->vals[ip];
+                nzmax = nz + m;
+                ir = realloc(ir, nzmax * sizeof(index_t));
+                if (!binaryC) vals = realloc(vals, nzmax * sizeof(num_t));
+            }
 
-                switch (spa_states[i])
+            if (masked)
+                for (index_t p = M->jc[j]; p < M->jc[j+1]; ++p)
+                    spa_states[M->ir[p]] = notM? SPA_STATE_NOT_ALLOWED : SPA_STATE_ALLOWED;
+
+            for (index_t kp = B->jc[j]; kp < B->jc[j+1]; ++kp)
+            {
+                index_t k = B->ir[kp];
+                num_t Bkj = binaryB? 1 : B->vals[kp];
+
+                for (index_t ip = A->jc[k]; ip < A->jc[k+1]; ++ip)
                 {
-                    case SPA_STATE_ALLOWED:
-                        if (!binaryC) spa_vals[i] = Aik * Bkj;
-                        spa_states[i] = SPA_STATE_SET;
-                        ir[nz++] = i;
-                        break;
-                    case SPA_STATE_SET:
-                        if (!binaryC) spa_vals[i] += Aik * Bkj;
-                        break;
-                    case SPA_STATE_NOT_ALLOWED:
-                        break;
+                    index_t i = A->ir[ip];
+                    num_t Aik = binaryA? 1 : A->vals[ip];
+
+                    switch (spa_states[i])
+                    {
+                        case SPA_STATE_ALLOWED:
+                            if (!binaryC) spa_vals[i] = Aik * Bkj;
+                            spa_states[i] = SPA_STATE_SET;
+                            ir[nz++] = i;
+                            break;
+                        case SPA_STATE_SET:
+                            if (!binaryC) spa_vals[i] += Aik * Bkj;
+                            break;
+                        case SPA_STATE_NOT_ALLOWED:
+                            break;
+                    }
                 }
             }
-        }
 
-        for (index_t p = jc[j]; p < nz; ++p)
-        {
-            index_t i = ir[p];
+            for (index_t p = jc[j]; p < nz; ++p)
+            {
+                index_t i = ir[p];
 
-            if (!binaryC)
-                if (spa_states[i] == SPA_STATE_SET)
-                    vals[p] = spa_vals[i];
+                if (!binaryC)
+                    if (spa_states[i] == SPA_STATE_SET)
+                        vals[p] = spa_vals[i];
+            }
         }
+        free(spa_states);
+        free(spa_vals);
     }
 
     jc[n] = nz;
 
-    free(spa_states);
-    free(spa_vals);
 
     ir = realloc(ir, nz * sizeof(index_t));
     if (!binaryC) vals = realloc(vals, nz * sizeof(num_t));
@@ -643,14 +660,30 @@ index_t *bfs(const spmat *A, index_t s, index_t *iters)
     frontier[s] = 1;
     levels[s] = level = 0;
 
+    double t0 = omp_get_wtime();
+    double t1;
+
     while (dense_vector_nzs(frontier, n) > 0)
     {
-        ++level;
+        t1 = omp_get_wtime();
         dense_vector_apply(visited, 1, frontier, n);
+        tprintf("1/4. v<f> <- 1,    iter %ld [%.3f secs]\n", level, omp_get_wtime()-t1);
+
         spmv(AT, frontier);
+        tprintf("2/4. f <- A^T * f, iter %ld [%.3f secs]\n", level, omp_get_wtime()-t1);
+
         dense_vector_apply(frontier, 0, visited, n);
+        tprintf("3/4. f<v> <- 0,    iter %ld [%.3f secs]\n", level, omp_get_wtime()-t1);
+
         dense_vector_apply(levels, level, frontier, n);
+        tprintf("4/4. p<f> <- i+1,  iter %ld [%.3f secs]\n\n", level, omp_get_wtime()-t1);
+
+        double t2 = omp_get_wtime();
+        tprintf("%ld iters performed [%.3f]\n\n", ++level, t2-t0);
     }
+
+    t1 = omp_get_wtime();
+    tprintf("Performed %ld breadth first search iterations from vertex %ld [%.3f secs]\n", level, s+1, t1-t0);
 
     if (iters) *iters = level;
 
@@ -702,10 +735,13 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
     if (!contains_source)
         d[k++] = s; /* add source to distinguished set */
 
+    t1 = omp_get_wtime();
+    tprintf("\nRandomly sampled %ld distinguished vertices [%.3f secs]\n", k, t1-t0);
+
+    t0 = omp_get_wtime();
     qsort(d, k, sizeof(index_t), index_compare);
     t1 = omp_get_wtime();
-
-    tprintf("Randomly sampled %ld distinguished vertices [%f secs]\n", k, t1-t0);
+    tprintf("\nSorted %ld integers                         [%.3f secs]\n", k, t1-t0);
 
     t0 = omp_get_wtime();
     index_t *ir = malloc(k * sizeof(index_t));
@@ -732,21 +768,30 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
     index_t bfsiters = (index_t)floor(sqrt(n)); /* limited search count */
 
     t1 = omp_get_wtime();
-    tprintf("Initialized frontier, visited, and levels matrices [%f secs]\n", t1-t0);
+    tprintf("\nInitialized frontier, visited, and levels matrices [%.3f secs]\n\n", t1-t0);
+
     t0 = omp_get_wtime();
-    /* perform multiple source @bfsiters-limited breadth first search */
     for (index_t i = 0; i < bfsiters; ++i)
     {
+        t1 = omp_get_wtime();
         N = spmat_spgemm(AT, F, V, 1);
 
+        tprintf(" 1/5. N <- V .* (A^T * F), %ld/%ld iters performed [%.3f secs]\n", i, bfsiters, omp_get_wtime()-t1);
+
         add(V, N);
+        tprintf(" 2/5. V <- (V + N),        %ld/%ld iters performed [%.3f secs]\n", i, bfsiters, omp_get_wtime()-t1);
+
         add(P, N);
+        tprintf(" 3/5. P <- (P + N),        %ld/%ld iters performed [%.3f secs]\n", i, bfsiters, omp_get_wtime()-t1);
 
         ewiseapply(P, (num_t)i+1, N);
+        tprintf(" 4/5. P<N> <- i+1,         %ld/%ld iters performed [%.3f secs]\n", i, bfsiters, omp_get_wtime()-t1);
 
         spmat_move(F, N);
+        double t2 = omp_get_wtime();
 
-        tprintf("%ld/%ld iters performed\n", i, bfsiters);
+        tprintf(" 5/5. F <- N,              %ld/%ld iters performed [%.3f secs]\n\n", i, bfsiters, t2-t1);
+        tprintf("%ld/%ld iters performed [%.3f secs]\n\n", i+1, bfsiters, t2-t0);
     }
     t1 = omp_get_wtime();
 
@@ -754,6 +799,9 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
 
     index_t *mapback = calloc(n, sizeof(index_t)); /* 0 means not in distinguished set, nonzero i means i-1 is [0..k-1] index */
 
+    #ifdef THREADED
+    #pragma omp parallel for
+    #endif
     for (index_t i = 0; i < k; ++i)
         mapback[d[i]] = i+1;
 
@@ -803,6 +851,10 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
         levels[i] = -1;
 
     /* computing estimated shortest path from s to v (s = source) */
+
+    #ifdef THREADED
+    #pragma omp parallel for
+    #endif
     for (index_t v = 0; v < n; ++v)
     {
         index_t stv = INT64_MAX;
@@ -816,7 +868,7 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
         for (index_t x = 0; x < k; ++x)
         {
             /* get auxiliary-graph shortest path length from s to x */
-            index_t stx = D[0*k + x];
+            index_t stx = D[(mapback[s]-1)*k + x];
 
             index_t xtv = -1;
             /* get minimum path-size from x to v found in x's limited

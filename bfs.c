@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
     t0 = omp_get_wtime();
     spmat *A = spmat_read_from_file(mtx);
     t1 = omp_get_wtime();
-    tprintf("Finished reading '%s' (%ld rows, %ld columns, %ld nonzeros) [%f secs]\n\n", mtx, A->m, A->n, spmat_nzs(A), t1-t0);
+    tprintf("Finished reading '%s' (%ld rows, %ld columns, %ld nonzeros) [%.2f secs]\n\n", mtx, A->m, A->n, spmat_nzs(A), t1-t0);
 
     FILE *f = fopen(paths, "w");
 
@@ -29,10 +29,7 @@ int main(int argc, char *argv[])
         index_t s = strtol(argv[argidx], NULL, 10) - 1;
 
         tprintf("Starting bfs from vertex %ld\n", s+1);
-        t0 = omp_get_wtime();
         index_t *levels = bfs(A, s, &iters);
-        t1 = omp_get_wtime();
-        tprintf("Performed %ld bfs iterations [%f secs]\n", iters, t1-t0);
 
         #ifdef LOGGER
         index_t explored = 0;
