@@ -594,11 +594,9 @@ index_t dense_vector_nzs(index_t *v, index_t n)
 {
     index_t nz = 0;
 
-    #ifdef THREADED
     #pragma omp parallel for reduction(+:nz)
-    #endif
     for (index_t i = 0; i < n; ++i)
-        if (v[i]) nz++;
+        if (v[i]) ++nz;
 
     return nz;
 }
@@ -607,17 +605,13 @@ void dense_vector_apply(index_t *v, index_t val, const index_t *x, index_t n)
 {
     if (!x)
     {
-        #ifdef THREADED
         #pragma omp parallel for
-        #endif
         for (index_t i = 0; i < n; ++i)
             v[i] = val;
     }
     else
     {
-        #ifdef THREADED
         #pragma omp parallel for
-        #endif
         for (index_t i = 0; i < n; ++i)
             if (x[i]) v[i] = val;
     }

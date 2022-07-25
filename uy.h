@@ -2,15 +2,26 @@
 #define ULLMAN_YANNAKAKIS_H_
 
 #include <stdio.h>
-#include <omp.h>
 
 #define MAX(a, b) (((a) < (b))? (b) : (a))
 #define MIN(a, b) (((a) < (b))? (a) : (b))
 
+#ifdef LOGGER
+#include <omp.h>
 #define timer_start() do { t0 = omp_get_wtime(); } while (0)
 #define timer_stop() do { t1 = omp_get_wtime(); } while (0)
 #define timer_elapsed() (t1-t0+0.0)
 #define tprintf(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
+#else
+#define timer_start()
+#define timer_stop()
+#define timer_elapsed()
+#define tprintf(fmt, ...)
+#endif
+
+#ifdef THREADED
+#include <omp.h>
+#endif
 
 typedef signed long index_t;
 typedef double num_t;

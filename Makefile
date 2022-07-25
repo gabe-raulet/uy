@@ -7,6 +7,7 @@ endif
 CFLAGS=-Wall -Werror -Wno-unknown-pragmas -fopenmp
 DEBUG?=0
 THREADED?=0
+LOGGER?=1
 
 ifeq ($(DEBUG), 1)
 CFLAGS+=-DDEBUG -g -O0 -fsanitize=address -fno-omit-frame-pointer
@@ -16,6 +17,10 @@ endif
 
 ifeq ($(THREADED), 1)
 CFLAGS+=-DTHREADED
+endif
+
+ifeq ($(LOGGER), 1)
+CFLAGS+=-DLOGGER
 endif
 
 PRGS=bfs
