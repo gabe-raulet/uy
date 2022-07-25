@@ -1,0 +1,7 @@
+*.swp
+*.o
+*.dSYM
+transpose
+spgemm
+bfs
+rgg_n_2_20_s0.mtx
