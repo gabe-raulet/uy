@@ -7,8 +7,6 @@
 #define MAX(a, b) (((a) < (b))? (b) : (a))
 #define MIN(a, b) (((a) < (b))? (a) : (b))
 
-extern double t0, t1;
-
 #define timer_start() do { t0 = omp_get_wtime(); } while (0)
 #define timer_stop() do { t1 = omp_get_wtime(); } while (0)
 #define timer_elapsed() (t1-t0+0.0)

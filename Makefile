@@ -18,18 +18,12 @@ ifeq ($(THREADED), 1)
 CFLAGS+=-DTHREADED
 endif
 
-PRGS=transpose
+PRGS=bfs
 
 all: $(PRGS)
 
-transpose: transpose.c uy.o
+bfs: bfs.c uy.o
 	$(CC) $(CFLAGS) -o $@ $^
-
-# spgemm: spgemm.c uy.o
-	# $(CC) $(CFLAGS) -o $@ $^
-
-# bfs: bfs.c uy.o
-	# $(CC) $(CFLAGS) -o $@ $^
 
 uy.o: uy.c uy.h
 	$(CC) $(CFLAGS) -c -o $@ $<
