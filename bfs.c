@@ -1,4 +1,4 @@
-#include "uy.h"
+#include "spmat.h"
 #include <stdio.h>
 #include <stdlib.h> /* strtol */
 

@@ -27,10 +27,10 @@ PRGS=bfs
 
 all: $(PRGS)
 
-bfs: bfs.c uy.o
+bfs: bfs.c spmat.o
 	$(CC) $(CFLAGS) -o $@ $^
 
-uy.o: uy.c uy.h
+spmat.o: spmat.c spmat.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 .PHONY: all clean purge

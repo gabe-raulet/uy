@@ -1,5 +1,5 @@
-#ifndef ULLMAN_YANNAKAKIS_H_
-#define ULLMAN_YANNAKAKIS_H_
+#ifndef SPMAT_H_
+#define SPMAT_H_
 
 #include <stdio.h>
 

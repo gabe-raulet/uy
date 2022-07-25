@@ -1,4 +1,4 @@
-#include "uy.h"
+#include "spmat.h"
 #include <stdlib.h> /* malloc, etc */
 #include <string.h> /* memcpy */
 #include <ctype.h>  /* tolower */
