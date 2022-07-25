@@ -2,6 +2,7 @@
 #include <stdlib.h> /* malloc, etc */
 #include <string.h> /* memcpy */
 #include <ctype.h>  /* tolower */
+#include <math.h>   /* floor */
 #include <assert.h>
 
 int index_compare(const void *a, const void *b)
@@ -594,7 +595,9 @@ index_t dense_vector_nzs(index_t *v, index_t n)
 {
     index_t nz = 0;
 
+    #ifdef THREADED
     #pragma omp parallel for reduction(+:nz)
+    #endif
     for (index_t i = 0; i < n; ++i)
         if (v[i]) ++nz;
 
@@ -605,13 +608,17 @@ void dense_vector_apply(index_t *v, index_t val, const index_t *x, index_t n)
 {
     if (!x)
     {
+        #ifdef THREADED
         #pragma omp parallel for
+        #endif
         for (index_t i = 0; i < n; ++i)
             v[i] = val;
     }
     else
     {
+        #ifdef THREADED
         #pragma omp parallel for
+        #endif
         for (index_t i = 0; i < n; ++i)
             if (x[i]) v[i] = val;
     }
@@ -654,4 +661,191 @@ index_t *bfs(const spmat *A, index_t s, index_t *iters)
     return levels;
 }
 
-index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters) { return NULL; }
+index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
+{
+    index_t n = A->m;
+    assert(A->m == A->n && s >= 0 && s < n);
+
+    double t0, t1;
+
+    t0 = omp_get_wtime();
+    index_t k = (index_t)floor(sqrt(n)*log(n)); /* k = O(n^(1/2)log(n)) is the number of distinguished vertices */
+    index_t *d = malloc((k+1)*sizeof(index_t));
+
+    /* randomly sample k vertices from [0..n-1] without replacement, using Fisher-Yates method */
+    index_t *x = malloc(n * (sizeof(index_t)));
+
+    index_t l;
+
+    #ifdef THREADED
+    #pragma omp parallel for private(l)
+    #endif
+    for (l = 0; l < n; ++l)
+        x[l] = l;
+
+    for (index_t i = 0; i < k; ++i)
+    {
+        index_t r = rand() % (n-i);
+        index_t t = x[r];
+        x[r] = x[n-i-1];
+        x[n-i-1] = t;
+    }
+
+    int contains_source = 0;
+
+    for (index_t i = 0; i < k; ++i)
+        if ((d[i] = x[n-k+i]) == s)
+            contains_source = 1; /* distinguished set already includes source */
+
+    free(x);
+
+    if (!contains_source)
+        d[k++] = s; /* add source to distinguished set */
+
+    qsort(d, k, sizeof(index_t), index_compare);
+    t1 = omp_get_wtime();
+
+    tprintf("Randomly sampled %ld distinguished vertices [%f secs]\n", k, t1-t0);
+
+    t0 = omp_get_wtime();
+    index_t *ir = malloc(k * sizeof(index_t));
+    index_t *jc = malloc((k+1) * sizeof(index_t));
+
+    for (index_t i = 0; i < k; ++i)
+    {
+        jc[i] = i;
+        ir[i] = d[i];
+    }
+
+    jc[k] = k;
+
+    spmat *F = spmat_init(n, k, ir, jc, NULL); /* n by sqrt(n)log(n) frontier matrix */
+    spmat *V = spmat_copy(F); /* visited matrix */
+    spmat *P = spmat_copy(V); /* bfs levels matrix */
+
+    ewiseapply(P, 0, NULL);
+
+    spmat *AT = spmat_transpose(A);
+
+    spmat *N;
+
+    index_t bfsiters = (index_t)floor(sqrt(n)); /* limited search count */
+
+    t1 = omp_get_wtime();
+    tprintf("Initialized frontier, visited, and levels matrices [%f secs]\n", t1-t0);
+    t0 = omp_get_wtime();
+    /* perform multiple source @bfsiters-limited breadth first search */
+    for (index_t i = 0; i < bfsiters; ++i)
+    {
+        N = spmat_spgemm(AT, F, V, 1);
+
+        add(V, N);
+        add(P, N);
+
+        ewiseapply(P, (num_t)i+1, N);
+
+        spmat_move(F, N);
+
+        tprintf("%ld/%ld iters performed\n", i, bfsiters);
+    }
+    t1 = omp_get_wtime();
+
+    tprintf("Performed %ld breadth first search iterations from each distinguished vertex [%f secs]\n", bfsiters, t1-t0);
+
+    index_t *mapback = calloc(n, sizeof(index_t)); /* 0 means not in distinguished set, nonzero i means i-1 is [0..k-1] index */
+
+    for (index_t i = 0; i < k; ++i)
+        mapback[d[i]] = i+1;
+
+    index_t *D = malloc((k*k) * sizeof(num_t)); /* all pairs shortest paths distance matrix for distinguished vertices */
+
+    #ifdef THREADED
+    #pragma omp parallel for
+    #endif
+    for (index_t i = 0; i < k*k; ++i)
+        D[i] = -1;
+
+    #ifdef THREADED
+    #pragma omp parallel for
+    #endif
+    for (index_t j = 0; j < k; ++j)
+    {
+        for (index_t ip = P->jc[j]; ip < P->jc[j+1]; ++ip)
+        {
+            index_t i = P->ir[ip];
+            index_t distance = (index_t)P->vals[ip];
+
+            if (mapback[i])
+                D[(mapback[i]-1)*k + j] = distance;
+        }
+    }
+
+    /* All-pairs shortest path (Floyd-Warshall) */
+    for (index_t p = 0; p < k; ++p)
+        for (index_t i = 0; i < k; ++i)
+            for (index_t j = 0; j < k; ++j)
+                if (i != j)
+                {
+                    index_t Dij = D[i*k + j];
+                    index_t Dip = D[i*k + p];
+                    index_t Dpj = D[p*k + j];
+
+                    if (Dip != -1 && Dpj != -1)
+                        D[i*k + j] = MIN(Dij, Dip + Dpj);
+                }
+
+    index_t *levels = malloc(n * sizeof(index_t));
+
+    #ifdef THREADED
+    #pragma omp parallel for
+    #endif
+    for (index_t i = 0; i < n; ++i)
+        levels[i] = -1;
+
+    /* computing estimated shortest path from s to v (s = source) */
+    for (index_t v = 0; v < n; ++v)
+    {
+        index_t stv = INT64_MAX;
+
+        /* From Klein paper:
+         *
+         * "Take minimum of all distinguished vertices x, of the
+         *  auxiliary-graph shortest path length from s to x plus
+         *  the minimum path-size from x to v found in x's limited
+         *  search." */
+        for (index_t x = 0; x < k; ++x)
+        {
+            /* get auxiliary-graph shortest path length from s to x */
+            index_t stx = D[0*k + x];
+
+            index_t xtv = -1;
+            /* get minimum path-size from x to v found in x's limited
+             * search */
+            for (index_t ip = P->jc[x]; ip < P->jc[x+1]; ++ip)
+            {
+                index_t i = P->ir[ip];
+                index_t distance = (index_t)P->vals[ip];
+
+                if (i == v)
+                {
+                    xtv = distance;
+                    break;
+                }
+            }
+
+            if (stx != -1 && xtv != -1)
+                stv = MIN(stv, stx + xtv);
+        }
+
+        levels[v] = (stv < INT64_MAX)? stv : -1;
+    }
+
+    *iters = bfsiters;
+
+    free(D);
+    free(mapback);
+    free(d);
+
+    return levels;
+
+}

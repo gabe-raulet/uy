@@ -28,23 +28,18 @@ int main(int argc, char *argv[])
         index_t iters;
         index_t s = strtol(argv[argidx], NULL, 10) - 1;
 
-        tprintf("Starting bfs from vertex %ld\n", s+1);
-        t0 = omp_get_wtime();
-        index_t *levels = bfs(A, s, &iters);
-        t1 = omp_get_wtime();
-        tprintf("Performed %ld bfs iterations [%f secs]\n", iters, t1-t0);
+        tprintf("Starting ullman-yannakakis from vertex %ld\n", s+1);
+        index_t *levels = ullman_yannakakis(A, s, &iters);
 
         #ifdef LOGGER
         index_t explored = 0;
-        #ifdef THREADED
         #pragma omp parallel for reduction(+:explored)
-        #endif
         for (index_t i = 0; i < A->n; ++i)
             if (levels[i] != -1) ++explored;
-        fprintf(stderr, "%ld/%ld vertices reachable from vertex %ld\n\n", explored, A->n, s+1);
+        fprintf(stderr, "(at least) %ld/%ld vertices reachable from vertex %ld\n\n", explored, A->n, s+1);
         #endif
 
-        fprintf(f, "** bfs levels from vertex %ld (eccentricity = %ld) **\n", s+1, iters);
+        fprintf(f, "** ullman-yannakakis levels from vertex %ld **\n", s+1);
         for (index_t i = 0; i < A->n-1; ++i)
             fprintf(f, "%ld ", levels[i]);
         fprintf(f, "%ld\n\n", levels[A->n-1]);
