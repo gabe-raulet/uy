@@ -25,7 +25,7 @@ ifeq ($(LOGGER), 1)
 CFLAGS+=-DLOGGER
 endif
 
-PRGS=bfs uy add spgemm
+PRGS=bfs uy spadd spgemm
 
 all: $(PRGS)
 
@@ -35,7 +35,7 @@ bfs: bfs.c spmat.o
 uy: uy.c spmat.o
 	$(CC) $(CFLAGS) -o $@ $^
 
-add: add.c spmat.o
+spadd: spadd.c spmat.o
 	$(CC) $(CFLAGS) -o $@ $^
 
 spgemm: spgemm.c spmat.o
