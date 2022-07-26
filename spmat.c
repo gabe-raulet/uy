@@ -483,77 +483,65 @@ spmat* spmat_spgemm(const spmat *A, const spmat *B, const spmat *M, int notM)
     index_t *ir = malloc(nzmax * sizeof(index_t));
     num_t *vals = binaryC? NULL : malloc(nzmax * sizeof(num_t));
 
-    #ifdef THREADED
-    #pragma omp parallel
-    #endif
+    spa_state_t *spa_states = malloc(m * sizeof(spa_state_t));
+    num_t *spa_vals = binaryC? NULL : malloc(m * sizeof(num_t));
+
+    for (index_t j = 0; j < n; ++j)
     {
-        int tid = omp_get_thread_num();
-        int nthrds = omp_get_num_threads();
+        jc[j] = nz;
 
-        index_t j_start = tid * (n / nthrds);
-        index_t j_end = (tid != nthrds-1)? j_start + (n / nthrds) : n;
+        for (index_t i = 0; i < m; ++i)
+            spa_states[i] = SPA_STATE_ALLOWED;
 
-        spa_state_t *spa_states = malloc(m * sizeof(spa_state_t));
-        num_t *spa_vals = binaryC? NULL : malloc(m * sizeof(num_t));
-
-        //tprintf("Thread %d computing columns [%ld..%ld]\n", tid, j_start, j_end-1);
-
-        for (index_t j = j_start; j < j_end; ++j)
+        if (!masked && nz + m > nzmax)
         {
-            jc[j] = nz;
+            nzmax = nz + m;
+            ir = realloc(ir, nzmax * sizeof(index_t));
+            if (!binaryC) vals = realloc(vals, nzmax * sizeof(num_t));
+        }
 
-            for (index_t i = 0; i < m; ++i)
-                spa_states[i] = SPA_STATE_ALLOWED;
+        if (masked)
+            for (index_t p = M->jc[j]; p < M->jc[j+1]; ++p)
+                spa_states[M->ir[p]] = notM? SPA_STATE_NOT_ALLOWED : SPA_STATE_ALLOWED;
 
-            if (!masked && nz + m > nzmax)
+        for (index_t kp = B->jc[j]; kp < B->jc[j+1]; ++kp)
+        {
+            index_t k = B->ir[kp];
+            num_t Bkj = binaryB? 1 : B->vals[kp];
+
+            for (index_t ip = A->jc[k]; ip < A->jc[k+1]; ++ip)
             {
-                nzmax = nz + m;
-                ir = realloc(ir, nzmax * sizeof(index_t));
-                if (!binaryC) vals = realloc(vals, nzmax * sizeof(num_t));
-            }
+                index_t i = A->ir[ip];
+                num_t Aik = binaryA? 1 : A->vals[ip];
 
-            if (masked)
-                for (index_t p = M->jc[j]; p < M->jc[j+1]; ++p)
-                    spa_states[M->ir[p]] = notM? SPA_STATE_NOT_ALLOWED : SPA_STATE_ALLOWED;
-
-            for (index_t kp = B->jc[j]; kp < B->jc[j+1]; ++kp)
-            {
-                index_t k = B->ir[kp];
-                num_t Bkj = binaryB? 1 : B->vals[kp];
-
-                for (index_t ip = A->jc[k]; ip < A->jc[k+1]; ++ip)
+                switch (spa_states[i])
                 {
-                    index_t i = A->ir[ip];
-                    num_t Aik = binaryA? 1 : A->vals[ip];
-
-                    switch (spa_states[i])
-                    {
-                        case SPA_STATE_ALLOWED:
-                            if (!binaryC) spa_vals[i] = Aik * Bkj;
-                            spa_states[i] = SPA_STATE_SET;
-                            ir[nz++] = i;
-                            break;
-                        case SPA_STATE_SET:
-                            if (!binaryC) spa_vals[i] += Aik * Bkj;
-                            break;
-                        case SPA_STATE_NOT_ALLOWED:
-                            break;
-                    }
+                    case SPA_STATE_ALLOWED:
+                        if (!binaryC) spa_vals[i] = Aik * Bkj;
+                        spa_states[i] = SPA_STATE_SET;
+                        ir[nz++] = i;
+                        break;
+                    case SPA_STATE_SET:
+                        if (!binaryC) spa_vals[i] += Aik * Bkj;
+                        break;
+                    case SPA_STATE_NOT_ALLOWED:
+                        break;
                 }
             }
-
-            for (index_t p = jc[j]; p < nz; ++p)
-            {
-                index_t i = ir[p];
-
-                if (!binaryC)
-                    if (spa_states[i] == SPA_STATE_SET)
-                        vals[p] = spa_vals[i];
-            }
         }
-        free(spa_states);
-        free(spa_vals);
+
+        for (index_t p = jc[j]; p < nz; ++p)
+        {
+            index_t i = ir[p];
+
+            if (!binaryC)
+                if (spa_states[i] == SPA_STATE_SET)
+                    vals[p] = spa_vals[i];
+        }
     }
+
+    free(spa_states);
+    free(spa_vals);
 
     jc[n] = nz;
 
