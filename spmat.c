@@ -642,33 +642,48 @@ index_t *bfs(const spmat *A, index_t s, index_t *iters)
     frontier[s] = 1;
     levels[s] = level = 0;
 
-    double t0 = omp_get_wtime();
-    double t1;
+    double t0, t1;
 
-    while (dense_vector_nzs(frontier, n) > 0)
+    double t_nzs = 0;
+    double t_apply = 0;
+    double t_spmv = 0;
+    double t_overall = omp_get_wtime();
+
+    for (;;)
     {
+        t0 = omp_get_wtime();
+        index_t nzs = dense_vector_nzs(frontier, n);
         t1 = omp_get_wtime();
+        t_nzs += (t1-t0);
+
+        if (!nzs) break;
+
+        t0 = omp_get_wtime();
         dense_vector_apply(visited, 1, frontier, n);
-        vtprintf("1/4. v<f> <- 1,    iter %ld [%.3f secs]\n", level, omp_get_wtime()-t1);
+        t1 = omp_get_wtime();
+        t_apply += (t1-t0);
 
+        t0 = omp_get_wtime();
         spmv(AT, frontier);
-        vtprintf("2/4. f <- A^T * f, iter %ld [%.3f secs]\n", level, omp_get_wtime()-t1);
+        t1 = omp_get_wtime();
+        t_spmv += (t1-t0);
 
+        t0 = omp_get_wtime();
         dense_vector_apply(frontier, 0, visited, n);
-        vtprintf("3/4. f<v> <- 0,    iter %ld [%.3f secs]\n", level, omp_get_wtime()-t1);
-
         dense_vector_apply(levels, level+1, frontier, n);
-        vtprintf("4/4. p<f> <- i+1,  iter %ld [%.3f secs]\n\n", level, omp_get_wtime()-t1);
+        t1 = omp_get_wtime();
+        t_apply += (t1-t0);
 
         ++level;
-
-        double t2 = omp_get_wtime();
-        vtprintf("%ld iters performed [%.3f]\n\n", level, t2-t0);
-        (void)t2;
     }
 
-    t1 = omp_get_wtime();
-    tprintf("Performed %ld breadth first search iterations from vertex %ld [%.3f secs]\n", level, s+1, t1-t0);
+    t_overall = omp_get_wtime() - t_overall;
+
+    tprintf("Performed %ld breadth first search iterations from vertex %ld [%.3f secs] [%d thread(s)]\n", level, s+1, t_overall, omp_get_num_threads());
+    tprintf("Breakdown: \n");
+    tprintf("    dense_vector_nzs()   - [%.3f secs]\n", t_nzs);
+    tprintf("    dense_vector_apply() - [%.3f secs]\n", t_apply);
+    tprintf("    spmv()               - [%.3f secs]\n\n", t_spmv);
 
     if (iters) *iters = level;
 
