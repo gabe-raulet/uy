@@ -603,9 +603,6 @@ index_t dense_vector_nzs(index_t *v, index_t n)
 {
     index_t nz = 0;
 
-    #ifdef THREADED
-    #pragma omp parallel for reduction(+:nz)
-    #endif
     for (index_t i = 0; i < n; ++i)
         if (v[i]) ++nz;
 
@@ -616,17 +613,11 @@ void dense_vector_apply(index_t *v, index_t val, const index_t *x, index_t n)
 {
     if (!x)
     {
-        #ifdef THREADED
-        #pragma omp parallel for
-        #endif
         for (index_t i = 0; i < n; ++i)
             v[i] = val;
     }
     else
     {
-        #ifdef THREADED
-        #pragma omp parallel for
-        #endif
         for (index_t i = 0; i < n; ++i)
             if (x[i]) v[i] = val;
     }
@@ -658,19 +649,22 @@ index_t *bfs(const spmat *A, index_t s, index_t *iters)
     {
         t1 = omp_get_wtime();
         dense_vector_apply(visited, 1, frontier, n);
-        tprintf("1/4. v<f> <- 1,    iter %ld [%.3f secs]\n", level, omp_get_wtime()-t1);
+        vtprintf("1/4. v<f> <- 1,    iter %ld [%.3f secs]\n", level, omp_get_wtime()-t1);
 
         spmv(AT, frontier);
-        tprintf("2/4. f <- A^T * f, iter %ld [%.3f secs]\n", level, omp_get_wtime()-t1);
+        vtprintf("2/4. f <- A^T * f, iter %ld [%.3f secs]\n", level, omp_get_wtime()-t1);
 
         dense_vector_apply(frontier, 0, visited, n);
-        tprintf("3/4. f<v> <- 0,    iter %ld [%.3f secs]\n", level, omp_get_wtime()-t1);
+        vtprintf("3/4. f<v> <- 0,    iter %ld [%.3f secs]\n", level, omp_get_wtime()-t1);
 
-        dense_vector_apply(levels, level, frontier, n);
-        tprintf("4/4. p<f> <- i+1,  iter %ld [%.3f secs]\n\n", level, omp_get_wtime()-t1);
+        dense_vector_apply(levels, level+1, frontier, n);
+        vtprintf("4/4. p<f> <- i+1,  iter %ld [%.3f secs]\n\n", level, omp_get_wtime()-t1);
+
+        ++level;
 
         double t2 = omp_get_wtime();
-        tprintf("%ld iters performed [%.3f]\n\n", ++level, t2-t0);
+        vtprintf("%ld iters performed [%.3f]\n\n", level, t2-t0);
+        (void)t2;
     }
 
     t1 = omp_get_wtime();
@@ -693,7 +687,7 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
     double t0, t1;
 
     t0 = omp_get_wtime();
-    index_t k = (index_t)floor(sqrt(n)*log(n)); /* k = O(n^(1/2)log(n)) is the number of distinguished vertices */
+    index_t k = (index_t)floor(2*sqrt(n)); /* k = O(n^(1/2)log(n)) is the number of distinguished vertices */
     index_t *d = malloc((k+1)*sizeof(index_t));
 
     /* randomly sample k vertices from [0..n-1] without replacement, using Fisher-Yates method */
@@ -701,9 +695,6 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
 
     index_t l;
 
-    #ifdef THREADED
-    #pragma omp parallel for private(l)
-    #endif
     for (l = 0; l < n; ++l)
         x[l] = l;
 
@@ -727,12 +718,12 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
         d[k++] = s; /* add source to distinguished set */
 
     t1 = omp_get_wtime();
-    tprintf("\nRandomly sampled %ld distinguished vertices [%.3f secs]\n", k, t1-t0);
+    vtprintf("\nRandomly sampled %ld distinguished vertices [%.3f secs]\n", k, t1-t0);
 
     t0 = omp_get_wtime();
     qsort(d, k, sizeof(index_t), index_compare);
     t1 = omp_get_wtime();
-    tprintf("\nSorted %ld integers                         [%.3f secs]\n", k, t1-t0);
+    vtprintf("\nSorted %ld integers                         [%.3f secs]\n", k, t1-t0);
 
     t0 = omp_get_wtime();
     index_t *ir = malloc(k * sizeof(index_t));
@@ -747,8 +738,7 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
     jc[k] = k;
 
     spmat *F = spmat_init(n, k, ir, jc, NULL); /* n by sqrt(n)log(n) frontier matrix */
-    spmat *V = spmat_copy(F); /* visited matrix */
-    spmat *P = spmat_copy(V); /* bfs levels matrix */
+    spmat *P = spmat_copy(F); /* bfs levels matrix */
 
     ewiseapply(P, 0, NULL);
 
@@ -756,7 +746,7 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
 
     spmat *N;
 
-    index_t bfsiters = (index_t)floor(sqrt(n)); /* limited search count */
+    index_t bfsiters = (index_t)floor(sqrt(n)*log(n)); /* limited search count */
 
     t1 = omp_get_wtime();
     tprintf("\nInitialized frontier, visited, and levels matrices [%.3f secs]\n\n", t1-t0);
@@ -765,23 +755,20 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
     for (index_t i = 0; i < bfsiters; ++i)
     {
         t1 = omp_get_wtime();
-        N = spmat_spgemm(AT, F, V, 1);
+        N = spmat_spgemm(AT, F, P, 1);
 
-        tprintf(" 1/5. N <- V .* (A^T * F), %ld/%ld iters performed [%.3f secs]\n", i, bfsiters, omp_get_wtime()-t1);
-
-        add(V, N);
-        tprintf(" 2/5. V <- (V + N),        %ld/%ld iters performed [%.3f secs]\n", i, bfsiters, omp_get_wtime()-t1);
+        vtprintf(" 1/4. N <- V .* (A^T * F), %ld/%ld iters performed [%.3f secs]\n", i, bfsiters, omp_get_wtime()-t1);
 
         add(P, N);
-        tprintf(" 3/5. P <- (P + N),        %ld/%ld iters performed [%.3f secs]\n", i, bfsiters, omp_get_wtime()-t1);
+        vtprintf(" 2/4. P <- (P + N),        %ld/%ld iters performed [%.3f secs]\n", i, bfsiters, omp_get_wtime()-t1);
 
         ewiseapply(P, (num_t)i+1, N);
-        tprintf(" 4/5. P<N> <- i+1,         %ld/%ld iters performed [%.3f secs]\n", i, bfsiters, omp_get_wtime()-t1);
+        vtprintf(" 3/4. P<N> <- i+1,         %ld/%ld iters performed [%.3f secs]\n", i, bfsiters, omp_get_wtime()-t1);
 
         spmat_move(F, N);
         double t2 = omp_get_wtime();
 
-        tprintf(" 5/5. F <- N,              %ld/%ld iters performed [%.3f secs]\n\n", i, bfsiters, t2-t1);
+        vtprintf(" 4/4. F <- N,              %ld/%ld iters performed [%.3f secs]\n\n", i, bfsiters, t2-t1);
         tprintf("%ld/%ld iters performed [%.3f secs]\n\n", i+1, bfsiters, t2-t0);
     }
     t1 = omp_get_wtime();
@@ -790,23 +777,14 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
 
     index_t *mapback = calloc(n, sizeof(index_t)); /* 0 means not in distinguished set, nonzero i means i-1 is [0..k-1] index */
 
-    #ifdef THREADED
-    #pragma omp parallel for
-    #endif
     for (index_t i = 0; i < k; ++i)
         mapback[d[i]] = i+1;
 
     index_t *D = malloc((k*k) * sizeof(num_t)); /* all pairs shortest paths distance matrix for distinguished vertices */
 
-    #ifdef THREADED
-    #pragma omp parallel for
-    #endif
     for (index_t i = 0; i < k*k; ++i)
         D[i] = -1;
 
-    #ifdef THREADED
-    #pragma omp parallel for
-    #endif
     for (index_t j = 0; j < k; ++j)
     {
         for (index_t ip = P->jc[j]; ip < P->jc[j+1]; ++ip)
@@ -835,17 +813,11 @@ index_t *ullman_yannakakis(const spmat *A, index_t s, index_t *iters)
 
     index_t *levels = malloc(n * sizeof(index_t));
 
-    #ifdef THREADED
-    #pragma omp parallel for
-    #endif
     for (index_t i = 0; i < n; ++i)
         levels[i] = -1;
 
     /* computing estimated shortest path from s to v (s = source) */
 
-    #ifdef THREADED
-    #pragma omp parallel for
-    #endif
     for (index_t v = 0; v < n; ++v)
     {
         index_t stv = LONG_MAX;

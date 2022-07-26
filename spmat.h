@@ -9,8 +9,14 @@
 
 #ifdef LOGGER
 #define tprintf(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
+#ifdef VERBOSE
+#define vtprintf(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
+#else
+#define vtprintf(fmt, ...)
+#endif
 #else
 #define tprintf(fmt, ...)
+#define vtprintf(fmt, ...)
 #endif
 
 typedef signed long index_t;

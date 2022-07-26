@@ -1,11 +1,15 @@
 #include "spmat.h"
 #include <stdio.h>
 #include <stdlib.h> /* strtol */
+#include <time.h>
+#include <unistd.h>
 
 double t0, t1;
 
 int main(int argc, char *argv[])
 {
+    srand(time(0)*getpid());
+
     if (argc < 4)
     {
         fprintf(stderr, "usage: %s <mtx> <paths> [sources...]\n", *argv);

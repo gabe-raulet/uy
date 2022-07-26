@@ -1,8 +1,9 @@
 
 CFLAGS=-Wall -Werror -Wno-unknown-pragmas -fopenmp
-DEBUG?=0
-THREADED?=1
-LOGGER?=1
+D?=0
+T?=0
+L?=1
+V?=0
 
 ifeq ($(shell uname), Darwin)
 CC=gcc-11
@@ -11,18 +12,22 @@ CC=cc
 CFLAGS+=-lm
 endif
 
-ifeq ($(DEBUG), 1)
+ifeq ($(D), 1)
 CFLAGS+=-DDEBUG -g -O0 -fsanitize=address -fno-omit-frame-pointer
 else
 CFLAGS+=-O2
 endif
 
-ifeq ($(THREADED), 1)
+ifeq ($(T), 1)
 CFLAGS+=-DTHREADED
 endif
 
-ifeq ($(LOGGER), 1)
+ifeq ($(L), 1)
 CFLAGS+=-DLOGGER
+endif
+
+ifeq ($(V), 1)
+CFLAGS+=-DVERBOSE
 endif
 
 PRGS=bfs uy spadd spgemm
