@@ -603,6 +603,9 @@ index_t dense_vector_nzs(index_t *v, index_t n)
 {
     index_t nz = 0;
 
+    #ifdef THREADED
+    #pragma omp parallel for reduction(+:nz)
+    #endif
     for (index_t i = 0; i < n; ++i)
         if (v[i]) ++nz;
 
@@ -613,11 +616,17 @@ void dense_vector_apply(index_t *v, index_t val, const index_t *x, index_t n)
 {
     if (!x)
     {
+        #ifdef THREADED
+        #pragma omp parallel for
+        #endif
         for (index_t i = 0; i < n; ++i)
             v[i] = val;
     }
     else
     {
+        #ifdef THREADED
+        #pragma omp parallel for
+        #endif
         for (index_t i = 0; i < n; ++i)
             if (x[i]) v[i] = val;
     }
@@ -679,7 +688,16 @@ index_t *bfs(const spmat *A, index_t s, index_t *iters)
 
     t_overall = omp_get_wtime() - t_overall;
 
-    tprintf("Performed %ld breadth first search iterations from vertex %ld [%.3f secs] [%d thread(s)]\n", level, s+1, t_overall, omp_get_num_threads());
+    int nthreads = 1;
+
+    #ifdef THREADED
+    #pragma omp parallel
+    {
+        if (!omp_get_thread_num()) nthreads = omp_get_num_threads();
+    }
+    #endif
+
+    tprintf("Performed %ld breadth first search iterations from vertex %ld [%.3f secs] [%d thread(s)]\n", level, s+1, t_overall, nthreads);
     tprintf("Breakdown:\n");
     tprintf("    dense_vector_nzs()   - [%.3f secs]\n", t_nzs);
     tprintf("    dense_vector_apply() - [%.3f secs]\n", t_apply);
