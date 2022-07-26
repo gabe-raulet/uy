@@ -1,7 +1,7 @@
 
 CFLAGS=-Wall -Werror -Wno-unknown-pragmas -fopenmp
 D?=0
-T?=0
+T?=1
 L?=1
 V?=0
 
