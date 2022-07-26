@@ -1,7 +1,11 @@
 *.swp
 *.o
 *.dSYM
+uy
 transpose
 spgemm
 bfs
+spadd
 rgg_n_2_20_s0.mtx
+test.sh
+bfs_outputs/*.txt

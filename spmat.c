@@ -680,7 +680,7 @@ index_t *bfs(const spmat *A, index_t s, index_t *iters)
     t_overall = omp_get_wtime() - t_overall;
 
     tprintf("Performed %ld breadth first search iterations from vertex %ld [%.3f secs] [%d thread(s)]\n", level, s+1, t_overall, omp_get_num_threads());
-    tprintf("Breakdown: \n");
+    tprintf("Breakdown:\n");
     tprintf("    dense_vector_nzs()   - [%.3f secs]\n", t_nzs);
     tprintf("    dense_vector_apply() - [%.3f secs]\n", t_apply);
     tprintf("    spmv()               - [%.3f secs]\n\n", t_spmv);
