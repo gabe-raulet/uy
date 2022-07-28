@@ -343,6 +343,8 @@ void transpose(spmat *A)
     spmat_move(A, AT);
 }
 
+typedef enum spa_state_t {SPA_STATE_ALLOWED, SPA_STATE_NOT_ALLOWED, SPA_STATE_SET} spa_state_t;
+
 index_t *spmat_spmv(const spmat *A, index_t *x)
 {
     index_t n = A->n;
@@ -370,7 +372,29 @@ void spmv(const spmat *A, index_t *x)
     free(y);
 }
 
-typedef enum spa_state_t {SPA_STATE_ALLOWED, SPA_STATE_NOT_ALLOWED, SPA_STATE_SET} spa_state_t;
+void bfs_spmv(const spmat *A, index_t *f, index_t *v, index_t *fs)
+{
+    index_t n = A->n;
+    assert(n == A->m);
+
+    for (index_t i = 0; i < n; ++i)
+    {
+        fs[i] = 0;
+
+        if (!v[i])
+        {
+            for (index_t kp = A->jc[i]; kp < A->jc[i+1]; ++kp)
+            {
+                index_t k = A->ir[kp];
+                if (f[k])
+                {
+                    fs[i] = 1;
+                    continue;
+                }
+            }
+        }
+    }
+}
 
 spmat *spmat_add(const spmat *A, const spmat *B)
 {
@@ -632,6 +656,84 @@ void dense_vector_apply(index_t *v, index_t val, const index_t *x, index_t n)
     }
 }
 
+index_t *bfs_fast(const spmat *A, index_t s, index_t *iters)
+{
+    index_t n = A->m;
+    assert(A->m == A->n && s >= 0 && s < n);
+
+    index_t *f  = calloc(n, sizeof(index_t));  // frontier
+    index_t *v  = calloc(n, sizeof(index_t));  // visited
+    index_t *w  = malloc(n * sizeof(index_t)); // levels
+    index_t *fs = malloc(n * sizeof(index_t));  // next frontier
+
+    #ifdef THREADED
+    #pragma omp parallel for
+    #endif
+    for (index_t i = 0; i < n; ++i)
+        w[i] = -1;
+
+    index_t l;
+    f[s] = 1;
+    w[s] = l = 0;
+
+    double t0, t1;
+    double t_nzs = 0;
+    double t_apply = 0;
+    double t_spmv = 0;
+    double t_overall = omp_get_wtime();
+
+    for (;;)
+    {
+        t0 = omp_get_wtime();
+        index_t nzs = dense_vector_nzs(f, n);
+        t1 = omp_get_wtime();
+        t_nzs += (t1-t0);
+
+        if (!nzs) break;
+
+        t0 = omp_get_wtime();
+        bfs_spmv(A, f, v, fs); // fs <- ~v && (A^T ||.&& f), v <- v && fs
+        t1 = omp_get_wtime();
+        t_spmv += (t1-t0);
+
+        index_t *t = f;
+        f = fs;
+        fs = t;
+
+        t0 = omp_get_wtime();
+        dense_vector_apply(w, l+1, f, n); // w[f] <- l+1
+        t1 = omp_get_wtime();
+        t_apply += (t1-t0);
+
+        ++l;
+    }
+
+    t_overall = omp_get_wtime() - t_overall;
+
+    int nthreads = 1;
+
+    #ifdef THREADED
+    #pragma omp parallel
+    {
+        if (!omp_get_thread_num()) nthreads = omp_get_num_threads();
+    }
+    #endif
+
+    tprintf("Performed %ld breadth first search iterations from vertex %ld [%.3f secs] [%d thread(s)]\n", l, s+1, t_overall, nthreads);
+    tprintf("Breakdown:\n");
+    tprintf("    dense_vector_nzs()   - [%.3f secs]\n", t_nzs);
+    tprintf("    dense_vector_apply() - [%.3f secs]\n", t_apply);
+    tprintf("    bfs_spmv()           - [%.3f secs]\n\n", t_spmv);
+
+    if (iters) *iters = l;
+
+    free(v);
+    free(f);
+    free(fs);
+
+    return w;
+}
+
 index_t *bfs(const spmat *A, index_t s, index_t *iters)
 {
     index_t n = A->m;
@@ -652,7 +754,6 @@ index_t *bfs(const spmat *A, index_t s, index_t *iters)
     levels[s] = level = 0;
 
     double t0, t1;
-
     double t_nzs = 0;
     double t_apply = 0;
     double t_spmv = 0;

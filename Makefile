@@ -30,11 +30,14 @@ ifeq ($(V), 1)
 CFLAGS+=-DVERBOSE
 endif
 
-PRGS=bfs uy spadd spgemm
+PRGS=bfs bfs_fast uy spadd spgemm
 
 all: $(PRGS)
 
 bfs: bfs.c spmat.o
+	$(CC) $(CFLAGS) -o $@ $^
+
+bfs_fast: bfs_fast.c spmat.o
 	$(CC) $(CFLAGS) -o $@ $^
 
 uy: uy.c spmat.o

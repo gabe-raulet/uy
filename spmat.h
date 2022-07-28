@@ -48,6 +48,7 @@ index_t* spmat_spmv        (const spmat *A, index_t *x);
 spmat*   spmat_add         (const spmat *A, const spmat *B);
 spmat*   spmat_spgemm      (const spmat *A, const spmat *B, const spmat *M, int notM);
 index_t* bfs               (const spmat *A, index_t s, index_t *iters);
+index_t* bfs_fast          (const spmat *A, index_t s, index_t *iters);
 index_t* ullman_yannakakis (const spmat *A, index_t s, index_t *iters);
 
 /* input/output subroutines */
@@ -57,10 +58,11 @@ void   spmat_pretty         (const spmat *A, FILE *f);
 void   spmat_pretty_stdout  (const spmat *A);
 
 /* algebraic subroutines */
-void transpose  (spmat *A);                                           /* A <- A^T */
-void spmv       (const spmat *A, index_t *x);                         /* x <- A*x */
-void add        (spmat *A, const spmat *B);                           /* A <- A+B */
-void spgemm     (const spmat *A, spmat *B, const spmat *M, int notM); /* B <- M .* (A*B) */
+void transpose  (spmat *A);                                            /* A <- A^T */
+void spmv       (const spmat *A, index_t *x);                          /* x <- A*x */
+void bfs_spmv   (const spmat *A, index_t *f, index_t *v, index_t *fs); /* fs <- ~v && (A^T ||.&& f), v <- v && fs */
+void add        (spmat *A, const spmat *B);                            /* A <- A+B */
+void spgemm     (const spmat *A, spmat *B, const spmat *M, int notM);  /* B <- M .* (A*B) */
 void ewiseapply (spmat *A, num_t val, const spmat *M);
 
 /* for sorting index_t arrays */
