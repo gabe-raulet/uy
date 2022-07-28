@@ -377,6 +377,9 @@ void bfs_spmv(const spmat *A, index_t *f, index_t *v, index_t *fs)
     index_t n = A->n;
     assert(n == A->m);
 
+    #ifdef THREADED
+    #pragma omp parallel for
+    #endif
     for (index_t i = 0; i < n; ++i)
     {
         fs[i] = 0;
@@ -386,11 +389,8 @@ void bfs_spmv(const spmat *A, index_t *f, index_t *v, index_t *fs)
             for (index_t kp = A->jc[i]; kp < A->jc[i+1]; ++kp)
             {
                 index_t k = A->ir[kp];
-                if (f[k])
-                {
-                    fs[i] = 1;
-                    continue;
-                }
+
+                if (f[k]) fs[i] = 1;
             }
         }
     }
@@ -701,6 +701,7 @@ index_t *bfs_fast(const spmat *A, index_t s, index_t *iters)
         fs = t;
 
         t0 = omp_get_wtime();
+        dense_vector_apply(v, 1, f, n);
         dense_vector_apply(w, l+1, f, n); // w[f] <- l+1
         t1 = omp_get_wtime();
         t_apply += (t1-t0);
@@ -783,6 +784,8 @@ index_t *bfs(const spmat *A, index_t s, index_t *iters)
         dense_vector_apply(levels, level+1, frontier, n);
         t1 = omp_get_wtime();
         t_apply += (t1-t0);
+
+        printf("%ld\n", level);
 
         ++level;
     }

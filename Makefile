@@ -15,7 +15,7 @@ endif
 ifeq ($(D), 1)
 CFLAGS+=-DDEBUG -g -O0 -fsanitize=address -fno-omit-frame-pointer
 else
-CFLAGS+=-O2 -fno-tree-vectorize
+CFLAGS+=-O2
 endif
 
 ifeq ($(T), 1)
